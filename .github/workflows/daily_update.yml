@@ -1,0 +1,49 @@
+name: Daily Golf Trend Update ⛳
+
+# 1. 언제 실행할까?
+on:
+  schedule:
+    # ⏰ 한국 시간 새벽 6시 (UTC 기준 21시) 실행
+    - cron: '0 21 * * *'
+  # 👇 (테스트용) 깃허브 웹에서 버튼 눌러서 즉시 실행 가능하게 함
+  workflow_dispatch:
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. 코드 내려받기
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # 2. 파이썬 설치
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    # 3. 라이브러리 설치 (requirements.txt 필수!)
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # 4. 수집 코드 실행 (여기가 핵심!)
+    # env: 쪽에 아까 저장한 비밀키를 넘겨줍니다.
+    - name: Run collection script
+      env:
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      run: |
+        python golf_DB.py
+
+    # 5. 변경된 golf.db 저장하고 깃허브에 올리기
+    - name: Commit and push changes
+      run: |
+        git config --global user.name "GolfBot"
+        git config --global user.email "bot@insight-golf.com"
+        git add golf.db
+        # 변경사항이 있을 때만 커밋 (에러 방지)
+        git commit -m "🤖 Daily Data Update (Auto)" || exit 0
+        git push
+       
