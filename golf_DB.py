@@ -11,7 +11,10 @@ sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.detach(), encoding='utf-8')
 
 # 👇 API 키 입력
-API_KEY = "내_API_는_비밀"
+API_KEY = os.environ.get("YOUTUBE_API_KEY")
+
+if not API_KEY:
+    raise ValueError("🚨 API 키가 없습니다! 환경변수를 확인해주세요.")
 youtube = build('youtube', 'v3', developerKey=API_KEY)
 
 # ------------------------------------------------------------------
@@ -100,4 +103,5 @@ def save_trending_videos_to_db():
         conn.close()
 
 if __name__ == "__main__":
+
     save_trending_videos_to_db()
