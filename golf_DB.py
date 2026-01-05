@@ -1,41 +1,44 @@
-# 파일명: golf_DB.py
+import google.generativeai as genai
 from googleapiclient.discovery import build
 import sqlite3
 import datetime
 import sys
 import io
-import os  # 👈 [필수] 경로 추적 탐정
+import os
+import time # 👈 AI 과부하 방지용 휴식
 
 # 한글 깨짐 방지
 sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.detach(), encoding='utf-8')
 
-# 👇 API 키 입력
-API_KEY = os.environ.get("YOUTUBE_API_KEY")
+# ---------------------------------------------------------
+# 🔑 비밀키 가져오기 (Youtube + Gemini)
+# ---------------------------------------------------------
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-if not API_KEY:
-    raise ValueError("🚨 API 키가 없습니다! 환경변수를 확인해주세요.")
-youtube = build('youtube', 'v3', developerKey=API_KEY)
+if not YOUTUBE_API_KEY:
+    raise ValueError("🚨 유튜브 API 키가 없습니다!")
+if not GEMINI_API_KEY:
+    raise ValueError("🚨 제미나이 API 키가 없습니다! Secrets를 확인하세요.")
 
-# ------------------------------------------------------------------
-# 🧭 [절대 경로 마법] "나는 지금 어디에 있는가?"
-# ------------------------------------------------------------------
-# 1. 지금 이 파일(golf_DB.py)이 있는 폴더 위치를 알아냅니다.
+# 서비스 연결
+youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash') # 빠르고 똑똑한 모델
+
+# ---------------------------------------------------------
+# 🧭 경로 설정
+# ---------------------------------------------------------
 current_folder = os.path.dirname(os.path.abspath(__file__))
-
-# 2. 그 폴더 안에 있는 'golf.db'를 지목합니다.
 db_path = os.path.join(current_folder, 'golf.db')
 
-print(f"📂 [주방장] DB 저장 위치: {db_path}")
-# ------------------------------------------------------------------
-
-# DB 연결 (무조건 위에서 찾은 경로로 연결)
+# DB 연결 및 초기화
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
-# 초기화 (테이블 삭제 후 재생성)
+# ⚠️ 테이블 싹 밀고 새로 만듭니다 (ai_summary 컬럼 추가됨!)
 cursor.execute("DROP TABLE IF EXISTS trending_videos")
-
 cursor.execute('''
     CREATE TABLE trending_videos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,13 +51,36 @@ cursor.execute('''
         tags TEXT,
         thumbnail_url TEXT,
         video_url TEXT,
-        scrapped_date TEXT
+        scrapped_date TEXT,
+        ai_summary TEXT  -- 👈 여기에 AI 요약이 들어갑니다
     )
 ''')
 conn.commit()
 
+def analyze_with_ai(title, channel, tags):
+    """제미나이에게 분석을 요청하는 함수"""
+    try:
+        prompt = f"""
+        너는 골프 전문 데이터 분석가야. 아래 유튜브 영상 정보를 보고 
+        '이 영상이 왜 인기 있는지'를 분석해서 한국어로 3줄 요약해줘.
+        
+        [영상 정보]
+        - 제목: {title}
+        - 채널: {channel}
+        - 태그: {tags}
+        
+        [답변 형식]
+        💡 핵심 포인트: (내용)
+        🎯 타겟 시청자: (내용)
+        🔥 벤치마킹 팁: (내용)
+        """
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"AI 분석 실패: {e}"
+
 def save_trending_videos_to_db():
-    print("🔥 데이터 수집 시작...")
+    print("🔥 데이터 수집 및 AI 분석 시작...")
     
     try:
         request = youtube.videos().list(
@@ -85,16 +111,21 @@ def save_trending_videos_to_db():
             pub_date = snippet.get('publishedAt', '')
             tags = ",".join(snippet.get('tags', []))
 
+            # 🧠 [AI 단계] 제미나이에게 물어보기
+            print(f"🤖 AI가 '{title}' 분석 중...")
+            ai_summary = analyze_with_ai(title, channel, tags)
+            time.sleep(2) # AI도 숨 쉴 틈을 줍니다 (에러 방지)
+
             cursor.execute('''
                 INSERT INTO trending_videos 
-                (title, channel, view_count, like_count, comment_count, publish_date, tags, thumbnail_url, video_url, scrapped_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (title, channel, views, likes, comments, pub_date, tags, thumbnail, link, today))
+                (title, channel, view_count, like_count, comment_count, publish_date, tags, thumbnail_url, video_url, scrapped_date, ai_summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (title, channel, views, likes, comments, pub_date, tags, thumbnail, link, today, ai_summary))
             count += 1
 
         conn.commit()
         print("-" * 50)
-        print(f"✅ [주방장] 요리 끝! {count}개 영상 저장 완료.")
+        print(f"✅ 수집 및 AI 분석 완료! {count}개 저장됨.")
         print("-" * 50)
 
     except Exception as e:
@@ -103,5 +134,4 @@ def save_trending_videos_to_db():
         conn.close()
 
 if __name__ == "__main__":
-
     save_trending_videos_to_db()
