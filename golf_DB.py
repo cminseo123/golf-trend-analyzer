@@ -5,14 +5,14 @@ import datetime
 import sys
 import io
 import os
-import time # 👈 AI 과부하 방지용 휴식
+import time
 
 # 한글 깨짐 방지
 sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.detach(), encoding='utf-8')
 
 # ---------------------------------------------------------
-# 🔑 비밀키 가져오기 (Youtube + Gemini)
+# 🔑 비밀키 가져오기
 # ---------------------------------------------------------
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -25,19 +25,57 @@ if not GEMINI_API_KEY:
 # 서비스 연결
 youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-pro') # 빠르고 똑똑한 모델
 
 # ---------------------------------------------------------
-# 🧭 경로 설정
+# 🤖 AI 모델 자동 선택 (여기가 핵심!)
+# ---------------------------------------------------------
+def get_working_model():
+    """사용 가능한 모델을 자동으로 찾아서 반환합니다."""
+    print("🤖 사용 가능한 AI 모델 탐색 중...")
+    try:
+        # 우선순위: 최신 플래시 -> 프로 -> 아무거나
+        preferred_order = ['gemini-1.5-flash', 'gemini-pro']
+        
+        # API가 제공하는 모든 모델 리스트 가져오기
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                # 모델 이름에서 'models/' 제거 (예: models/gemini-pro -> gemini-pro)
+                clean_name = m.name.replace('models/', '')
+                available_models.append(clean_name)
+        
+        # 1. 우리가 원하는 모델이 있는지 확인
+        for pref in preferred_order:
+            if pref in available_models:
+                print(f"✅ 최적 모델 선택됨: {pref}")
+                return genai.GenerativeModel(pref)
+        
+        # 2. 없으면 Gemini 들어간 아무거나 선택
+        for m in available_models:
+            if 'gemini' in m:
+                print(f"⚠️ 대체 모델 선택됨: {m}")
+                return genai.GenerativeModel(m)
+                
+        # 3. 진짜 아무것도 없으면 기본값 강제 시도
+        return genai.GenerativeModel('gemini-pro')
+        
+    except Exception as e:
+        print(f"⚠️ 모델 탐색 실패 ({e}), 기본값(gemini-pro)으로 시도합니다.")
+        return genai.GenerativeModel('gemini-pro')
+
+# 자동으로 찾은 모델 장착!
+model = get_working_model()
+
+# ---------------------------------------------------------
+# 🧭 경로 및 DB 설정
 # ---------------------------------------------------------
 current_folder = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(current_folder, 'golf.db')
 
-# DB 연결 및 초기화
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
-# ⚠️ 테이블 싹 밀고 새로 만듭니다 (ai_summary 컬럼 추가됨!)
+# 테이블 초기화
 cursor.execute("DROP TABLE IF EXISTS trending_videos")
 cursor.execute('''
     CREATE TABLE trending_videos (
@@ -52,13 +90,12 @@ cursor.execute('''
         thumbnail_url TEXT,
         video_url TEXT,
         scrapped_date TEXT,
-        ai_summary TEXT  -- 👈 여기에 AI 요약이 들어갑니다
+        ai_summary TEXT
     )
 ''')
 conn.commit()
 
 def analyze_with_ai(title, channel, tags):
-    """제미나이에게 분석을 요청하는 함수"""
     try:
         prompt = f"""
         너는 골프 전문 데이터 분석가야. 아래 유튜브 영상 정보를 보고 
@@ -98,23 +135,23 @@ def save_trending_videos_to_db():
         for item in response['items']:
             snippet = item['snippet']
             stats = item['statistics']
-
+            
+            # 데이터 추출
             title = snippet['title']
             channel = snippet['channelTitle']
             vid_id = item['id']
             link = f"https://www.youtube.com/watch?v={vid_id}"
             thumbnail = snippet['thumbnails']['medium']['url']
-            
             views = int(stats.get('viewCount', 0))
             likes = int(stats.get('likeCount', 0))
             comments = int(stats.get('commentCount', 0))
             pub_date = snippet.get('publishedAt', '')
             tags = ",".join(snippet.get('tags', []))
 
-            # 🧠 [AI 단계] 제미나이에게 물어보기
+            # AI 분석
             print(f"🤖 AI가 '{title}' 분석 중...")
             ai_summary = analyze_with_ai(title, channel, tags)
-            time.sleep(2) # AI도 숨 쉴 틈을 줍니다 (에러 방지)
+            time.sleep(2)
 
             cursor.execute('''
                 INSERT INTO trending_videos 
@@ -124,9 +161,7 @@ def save_trending_videos_to_db():
             count += 1
 
         conn.commit()
-        print("-" * 50)
-        print(f"✅ 수집 및 AI 분석 완료! {count}개 저장됨.")
-        print("-" * 50)
+        print(f"✅ 완료! {count}개 저장됨.")
 
     except Exception as e:
         print("에러 발생:", e)
@@ -135,4 +170,3 @@ def save_trending_videos_to_db():
 
 if __name__ == "__main__":
     save_trending_videos_to_db()
-
