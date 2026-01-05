@@ -25,7 +25,7 @@ if not GEMINI_API_KEY:
 # 서비스 연결
 youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash') # 빠르고 똑똑한 모델
+model = genai.GenerativeModel('gemini-pro') # 빠르고 똑똑한 모델
 
 # ---------------------------------------------------------
 # 🧭 경로 설정
@@ -135,3 +135,4 @@ def save_trending_videos_to_db():
 
 if __name__ == "__main__":
     save_trending_videos_to_db()
+
