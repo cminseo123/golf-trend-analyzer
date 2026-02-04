@@ -3,3 +3,4 @@ pandas
 google-api-python-client
 python-dateutil
 google-generativeai
+opencv-python-headless
