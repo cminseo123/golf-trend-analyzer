@@ -1,0 +1,45 @@
+name: Daily Golf Trend Update ⛳
+
+on:
+  schedule:
+    - cron: '0 21 * * *' # 한국 시간 새벽 6시
+  workflow_dispatch:
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    
+    # 👇 [권한 설정] 아까 웹에서 버튼 눌러서 했던 걸 코드로 박제합니다 (에러 방지)
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # 👇 [업그레이드] 파이썬 3.9 -> 3.10 (경고 해결!)
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # 👇 [여기가 핵심!] GEMINI 키도 챙기라고 적어줘야 합니다.
+    - name: Run collection script
+      env:
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: |
+        python golf_DB.py
+
+    - name: Commit and push changes
+      run: |
+        git config --global user.name "GolfBot"
+        git config --global user.email "bot@insight-golf.com"
+        git add golf.db
+        git commit -m "🤖 Daily Data Update (Auto)" || exit 0
+        git push
