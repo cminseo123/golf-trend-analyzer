@@ -33,6 +33,11 @@ def apply_custom_style():
         h1 { color: #1E1E1E; font-family: sans-serif; font-weight: 700; }
         [data-testid="stMetricValue"] { font-size: 1.5rem !important; color: #FF4B4B; }
         .stVideo { margin-bottom: 10px; }
+        
+        /* # 태그 버튼 텍스트를 검은색으로 변경 */
+        button[aria-disabled="true"] [data-testid="stMarkdownContainer"] {
+            color: black !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
